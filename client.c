@@ -59,7 +59,7 @@ int main(int argc, char* argv[]){
     	/*Looping*/
 	while (1){
 		/*Send Nama File Entry*/
-        	sendto(sockfd, net_buf, NET_BUF_SIZE, sendrecvflag, (struct sockaddr *)&addr_con, addrlen);
+        sendto(sockfd, net_buf, NET_BUF_SIZE, sendrecvflag, (struct sockaddr *)&addr_con, addrlen);
         	/*Receive file entry yang diterima server*/
 		recvfrom(sockfd, &file_existed, sizeof(int), sendrecvflag, (struct sockaddr *)&addr_con, &addrlen);
         	/*Kondisi File Tidak Tersedia*/
@@ -73,44 +73,54 @@ int main(int argc, char* argv[]){
 		setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval));
 		recvfrom(sockfd, &total_frame, sizeof(long int), sendrecvflag, (struct sockaddr *)&addr_con, &addrlen);
         	t_out.tv_sec = 0;
-        	setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval));
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (char *)&t_out, sizeof(struct timeval));
 		/*Kondisi Jika Total Frame Sudah Berhasil Diterima*/
 		if (total_frame > 0){
+		
+		
+			int flag_frame = 0;
 			/*kirim total frame ke server*/
-            		sendto(sockfd, &(total_frame), sizeof(total_frame), 0, (struct sockaddr *)&addr_con, addrlen);
+            	sendto(sockfd, &(total_frame), sizeof(total_frame), 0, (struct sockaddr *)&addr_con, addrlen);
             		printf("\n---------Data Received---------\n");
             	       /**/
 		       FILE *file_target = fopen(net_buf, "w");
-            	       
             	       for (long int i = 1; i <= total_frame; i++){
-            	       
             	       //printf("==================frame================================================================\n");
                 		memset(&frame, 0, sizeof(frame));
                 		/*proses menerima data dari server*/
                 		recvfrom(sockfd, &frame, sizeof(frame), sendrecvflag, (struct sockaddr *)&addr_con, &addrlen);
-                		//kirim frame.id atau ack number
-                		sendto(sockfd, &(frame.id), sizeof(frame.id), 0, (struct sockaddr *)&addr_con, addrlen);
+                		printf("Frame ID %ld \n", frame.id);
                 		/*cek apakah frame id yang dikirim telah sesuai dengan loop dari total frame-nya*/ 
-                		if ((frame.id < i) || (frame.id > i)){
+                		if ((frame.id < i) || (frame.id > i) ){
+                			printf("\n receive ==> %ld , there is an error bit\n", frame.id);
                     			i--;
-                		}
-                		else{
-					/*cek parity bit dari data yang diterima dari server*/
+                    		}
+                    		else if((frame.id==4) && (flag_frame==0)){
+                				printf("\nerror receiving ==> %ld , resend \n", frame.id);
+                    			i--;
+                				flag_frame = 1;
+                			}
+                			else if((frame.id==7) && (flag_frame==0)){
+                				printf("\nerror receiving ==> %ld , resend \n", frame.id);
+                    			i--;
+                				flag_frame = 1;
+                			}
+                			else{	
+                				flag_frame=0;
+                				sendto(sockfd, &(frame.id), sizeof(frame.id), 0, (struct sockaddr *)&addr_con, addrlen);
+								/*cek parity bit dari data yang diterima dari server*/
                     			if (parity_check(frame.data) == 0){
-                    			
                         			unsigned char the_stream[ALL_SIZE];
 	 	                        	unsigned char dump_8[8];
                         			int x = 0;
-						
-						/*loop untuk membaca data per 8 char dari frame data yang dikirim tadi (2048) untuk dubah ke fungsi byte2ASCII */
+								/*loop untuk membaca data per 8 char dari frame data yang dikirim tadi (2048) untuk dubah 							ke fungsi byte2ASCII */
                         			for(int i = 0; i < ALL_SIZE; i++){
                        				// mengisi elemen dari tiap array dari frame data sebanyak 8 char
                        				dump_8[x]=frame.data[i];
-                       				
                        				if((i+1)%8==0){
                         					//dump_8[8]='\0';
                         					unsigned char the_char = byte_to_ascii_char(dump_8);
-                            					printf("%c", the_char); //print text yang telah diubah
+                            					//printf("%c", the_char); //print text yang telah diubah
                             					the_stream[i] = the_char;
                             					/*menulis the_char ke file target*/
                             					fputc(the_stream[i], file_target);
@@ -120,20 +130,27 @@ int main(int argc, char* argv[]){
                         				else{
                         					x++;
                         				}
-                        			}
+                        			 }
                         			//fwrite(the_stream, 1024 , sizeof(unsigned char), file_target);
                         			/**/	
-                    			}
+                    			    }
                                        /*Kondisi Terdapat bit error pada frame data*/
                     			else{
+                    			
                         			recvFile(frame.data);
+                        			if ((frame.id < i) || (frame.id > i)){
+                    					i--;
+                				}
                         			printf(" receive ==> %ld , there is an error bit\n", frame.id);
+                        			
                     			}
                 		}
             		}
             		printf("\n-------------------------------\n");
-            		printf("Frame frame = %s\n", frame.data); //print frame data yang diterima
-            		printf("total frame = %ld\n", total_frame);
+            		//printf("Frame frame = %s\n", frame.data); //print frame data yang diterima
+            		//printf("total frame = %ld\n", total_frame);
+            		//printf(" send ACK NUMBER==> %ld\n", ack_num);
+                	printf("\n send FRAME ID==> %ld\n", frame.id);
             		fclose(file_target);
             		break;
         	}
